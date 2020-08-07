@@ -121,7 +121,9 @@ end
 
 if !File.exist?("mods/")
   puts "Mods folder (mods/) not found!"
-  puts "Please put the update in the minecraft folder and try again!"
+  puts "Please put the update in the minecraft folder and try again..."
+  puts "Or download and extract the modpack manually at:"
+  puts "https://drive.google.com/drive/u/1/folders/1s2sviktIm0mxMLSA2AQJtz_KSFjYhSFe"
   exit
 end
 
