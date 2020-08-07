@@ -1,6 +1,24 @@
-RubyVM::InstructionSequence.load_from_binary(File.read('mf_modpack_updater.so')).eval
+require 'fiddle'
 require 'io/console'
 require 'filesize'
+
+class RubyVM::InstructionSequence
+  # Retrieve Ruby Core's C-ext `iseq_load' function address
+  load_fn_addr  = Fiddle::Handle::DEFAULT['rb_iseq_load']
+  # Retrieve `iseq_load' C function representation
+  load_fn       = Fiddle::Function.new(load_fn_addr,
+                                       [Fiddle::TYPE_VOIDP] * 3,
+                                       Fiddle::TYPE_VOIDP)
+
+  # Make `iseq_load' accessible as `load' class method
+  define_singleton_method(:load) do |data, parent = nil, opt = nil|
+    load_fn.call(Fiddle.dlwrap(data), parent, opt).to_value
+	end
+end
+
+File.open('mf_modpack_updater.so', 'rb') do |fp|
+  RubyVM::InstructionSequence.load(Marshal.load(fp)).eval
+end
 
 module Warning
   def self.warn(*args)
@@ -47,7 +65,6 @@ def humanize_time(secs)
   ret = [[60, :s], [60, :m], [24, :h], [Float::INFINITY, :d]].map{ |count, name|
     if secs > 0
       secs, n = secs.divmod(count)
-
       "#{n.to_i}#{name}" unless n.to_i==0
     end
   }.compact.reverse.join('')
@@ -100,6 +117,12 @@ def finalize_downloading(file)
   puts sprintf("[%s] 100%% %s Done" + ' '*(PROGRESS_BAR_LEN/2), PROGRESS_OK_CHAR*PROGRESS_BAR_LEN, Filesize.from("#{fn} B").to_s(vol))
   Thread.kill $__th_download
   puts "Downloading Complete, file saved to #{file}"
+end
+
+if !File.exist?("mods/")
+  puts "Mods folder (mods/) not found!"
+  puts "Please put the update in the minecraft folder and try again!"
+  exit
 end
 
 MAIN_FOLDER_ID = '1s2sviktIm0mxMLSA2AQJtz_KSFjYhSFe'
