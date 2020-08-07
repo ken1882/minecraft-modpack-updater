@@ -60,6 +60,7 @@ puts %{
 
 }
 
+# Retrun true if 'y', false if 'n'
 def check_yesno(info)
   print info
   inp = ''
@@ -70,6 +71,7 @@ def check_yesno(info)
   return inp == 'y' ? true : false
 end
 
+# Seconds to human readable
 def humanize_time(secs)
   ret = [[60, :s], [60, :m], [24, :h], [Float::INFINITY, :d]].map{ |count, name|
     if secs > 0
@@ -80,6 +82,14 @@ def humanize_time(secs)
   return ret.empty? ? '0s' : ret
 end
 
+def humanize_size(_size)
+  vol = 'MB'
+  Filesize.from("#{_size} B").pretty.split.last.tap{|s| vol = s[0] + s[-1]}
+  return Filesize.from("#{_size} B").to_s(vol)
+end
+
+# Watcher thread printing downloading progress,
+# No concurrent download supported
 def print_downloading_info(file, total_size)
   $__th_download = Thread.new{
     last_fsize = 0
@@ -95,14 +105,9 @@ def print_downloading_info(file, total_size)
       (PROGRESS_BAR_LEN - ok_t).times{progress_bar += PROGRESS_WAIT_CHAR}
 
       delta = fn - last_fsize
-      vol_ok = vol_spd = nil
 
-      # iB to B
-      Filesize.from("#{fn} B").pretty.split.last.tap{|s| vol_ok = s[0] + s[-1]}
-      Filesize.from("#{delta} B").pretty.split.last.tap{|s| vol_spd = s[0] + s[-1]}
-    
       info = sprintf("[%s] %.1f%% %s %s/s ETA: %s", progress_bar, percent, 
-        Filesize.from("#{fn} B").to_s(vol_ok), Filesize.from("#{delta} B").to_s(vol_spd),
+        humanize_size(fn), humanize_size(delta),
         delta == 0 ? '0s' : humanize_time(((total_size - fn) / delta).to_i)
       )
 
@@ -120,10 +125,10 @@ def print_downloading_info(file, total_size)
   }
 end
 
+# Terminate download and watcher thread
 def finalize_downloading(file)
   fn  = File.size(file)
-  vol = Filesize.from("#{fn} B").pretty.split.last.tap{|s| s[0] + s[-1]}
-  puts sprintf("[%s] 100%% %s Done" + ' '*(PROGRESS_BAR_LEN/2), PROGRESS_OK_CHAR*PROGRESS_BAR_LEN, Filesize.from("#{fn} B").to_s(vol))
+  puts sprintf("[%s] 100%% %s Done" + ' '*(PROGRESS_BAR_LEN/2), PROGRESS_OK_CHAR*PROGRESS_BAR_LEN, humanize_size(fn))
   Thread.kill $__th_download
   puts "Downloading Complete, file saved to #{file}"
 end
@@ -145,6 +150,15 @@ def extract_zip(zfile, base_path='.')
   end
 end
 
+def load_current_version
+  $cur_version = (Marshal.load(File.open(VERSION_FILE, 'rb')) rescue nil)
+  if $cur_version.nil? 
+    $cur_version = {
+      :version => '0.0.0'
+    }
+  end
+end
+
 if !File.exist?("mods/")
   puts "Mods folder (mods/) not found!"
   puts "Please put the update in the minecraft folder and try again..."
@@ -157,9 +171,16 @@ MAIN_FOLDER_ID = '1s2sviktIm0mxMLSA2AQJtz_KSFjYhSFe'
 UPDATE_FOLDER_ID = '1BFgEAjTIWglRL8HIStkXxkRgl8MFAVAj'
 VERSION_FILE = ".version"
 
-Session.file_by_id(MAIN_FOLDER_ID).files.each do |f|
-  $latest_update = f if f.title.downcase.include? 'modernfantasy'
-  $latest_header = f if f.title.downcase.include? '.version'
+# Downloading latest version info from google drive
+begin
+  Session.file_by_id(MAIN_FOLDER_ID).files.each do |f|
+    $latest_update = f if f.title.downcase.include? 'modernfantasy'
+    $latest_header = f if f.title.downcase.include? '.version'
+  end
+rescue NoMethodError => err 
+  puts "Modpack not installed, please download manually at:"
+  puts "https://drive.google.com/drive/u/1/folders/1s2sviktIm0mxMLSA2AQJtz_KSFjYhSFe"
+  exit
 end
 
 if !$latest_header
@@ -181,12 +202,7 @@ class << $latest_update
 end
 $latest_update.initialize
 
-$cur_version = (Marshal.load(File.open(VERSION_FILE, 'rb')) rescue nil)
-if $cur_version.nil? 
-  $cur_version = {
-    :version => '0.0.0'
-  }
-end
+load_current_version
 puts "Latest version:  #{$latest_update.version}"
 puts "Current version: #{$cur_version[:version]}"
 
@@ -217,13 +233,22 @@ REMOVE_FOLDERS = [
   'shaderpacks/'
 ]
 
-if !upgrade_tree[$cur_version[:version]]
+# check if current version can update to latest version
+_curv = $cur_version[:version]
+estimate_size = 0
+loop do
+  break if !upgrade_tree[_curv]
+  estimate_size += upgrade_tree[_curv].last.files.find{|f| (Integer(f.title) rescue nil)}.title.to_i
+  _curv = upgrade_tree[_curv].first
+end
+
+if (_curv || '') != $latest_update.version
   puts "No update available, a complete-update required."
   
-  if check_yesno "Do you want to auto-download and update the latest version (#{$latest_update.version})(#{Filesize.from("#{$latest_update.size} B").to_s("MB")})? (y/n): "
+  if check_yesno "Do you want to auto-download and update the latest version (#{$latest_update.version})(#{humanize_size($latest_update.size)})? (y/n): "
     puts "Following folders will be removed:"
     puts REMOVE_FOLDERS.join("\n")
-    puts "And options (e.g. keybinds) will also be replaced!"
+    puts "And options (e.g. keybinds) will also be replaced! Backup it if you have customized keybinds."
     if check_yesno "Continue? (y/n): "
       _filename = $latest_update.title
       print_downloading_info(_filename, $latest_update.size)
@@ -243,4 +268,56 @@ if !upgrade_tree[$cur_version[:version]]
     puts "Aborting updater"
     exit
   end
+else
+  puts "Update is available! Estimated total size: #{humanize_size(estimate_size)}"
+  if !check_yesno("Do you want to update modpack? (y/n): ")
+    puts "Aborting updater"
+    exit
+  end
+  _curv = $cur_version[:version]
+  loop do
+    break if !upgrade_tree[_curv]
+    _nextv = upgrade_tree[_curv].first
+    _target = nil; _size = 0; _verinfo = {};
+    upgrade_tree[_curv].last.files.each do |file|
+      _target = file if file.title.end_with? '.zip'
+      _size = file.title.to_i if (Integer(file.title) rescue nil)
+      if file.title == '.version'
+        tmp_filename = ".__#{_nextv}.verinfo"
+        file.download_to_file(tmp_filename)
+        File.open(tmp_filename, 'rb') do |fp|
+          _verinfo = Marshal.load(fp)
+        end
+        File.delete tmp_filename
+      end
+    end
+    puts "Updating #{_curv} ~> #{_nextv}"
+    
+    print_downloading_info(_target.title, _size)
+    _target.download_to_file(_target.title)
+    finalize_downloading(_target.title)
+    sleep(1)
+    extract_zip(_target.title)
+    sleep(0.3)
+    File.delete _target.title
+    
+    if _verinfo[:file_removed].size > 0
+      puts "Deleting outdated files..."
+      _verinfo[:file_removed].each do |dpath|
+        next unless File.exist? dpath
+        puts "Removing #{dpath}"
+        if File.directory? dpath
+          FileUtils.rm_rf(dpath) 
+        else
+          File.delete dpath
+        end
+      end
+    end
+
+    File.open(VERSION_FILE, 'wb'){|fp| Marshal.dump(_verinfo, fp)}
+    _curv = _nextv
+    puts "Version #{_verinfo[:version]} downloaded"  
+  end
+  load_current_version
+  puts "Successfully updated to #{$cur_version[:version]}"
 end
