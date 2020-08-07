@@ -1,16 +1,13 @@
 require 'fiddle'
 require 'io/console'
 require 'filesize'
+require 'zip'
 
+# Load API library
 class RubyVM::InstructionSequence
-  # Retrieve Ruby Core's C-ext `iseq_load' function address
-  load_fn_addr  = Fiddle::Handle::DEFAULT['rb_iseq_load']
-  # Retrieve `iseq_load' C function representation
-  load_fn       = Fiddle::Function.new(load_fn_addr,
-                                       [Fiddle::TYPE_VOIDP] * 3,
-                                       Fiddle::TYPE_VOIDP)
+  load_fn_addr = Fiddle::Handle::DEFAULT['rb_iseq_load']
+  load_fn = Fiddle::Function.new(load_fn_addr, [Fiddle::TYPE_VOIDP] * 3, Fiddle::TYPE_VOIDP)
 
-  # Make `iseq_load' accessible as `load' class method
   define_singleton_method(:load) do |data, parent = nil, opt = nil|
     load_fn.call(Fiddle.dlwrap(data), parent, opt).to_value
 	end
@@ -20,9 +17,21 @@ File.open('mf_modpack_updater.so', 'rb') do |fp|
   RubyVM::InstructionSequence.load(Marshal.load(fp)).eval
 end
 
+# Disable warning
 module Warning
   def self.warn(*args)
   end
+end
+
+def report_exception(error, ex_caller=[])
+  backtrace = [] + error.backtrace + ex_caller
+  error_line = backtrace.first
+  backtrace[0] = ''
+  err_class = " (#{error.class})"
+  back_trace_txt = backtrace.join("\n\tfrom ")
+  error_txt = sprintf("%s %s %s %s %s %s",error_line, ": ", error.message, err_class, back_trace_txt, "\n" )
+  print error_txt
+  return error_txt
 end
 
 PROGRESS_BAR_LEN = 40
@@ -119,6 +128,23 @@ def finalize_downloading(file)
   puts "Downloading Complete, file saved to #{file}"
 end
 
+def extract_zip(zfile, base_path='.')
+  Zip::File.open(zfile) do |archive|
+    archive.each do |file|
+      _dpath = "#{base_path}/#{file}"
+      if File.exist? _dpath
+        if File.directory? _dpath
+          FileUtils.rm_rf _dpath
+        else
+          File.delete _dpath
+        end
+      end
+      puts "Extracting #{_dpath}"
+      archive.extract(file, _dpath)
+    end
+  end
+end
+
 if !File.exist?("mods/")
   puts "Mods folder (mods/) not found!"
   puts "Please put the update in the minecraft folder and try again..."
@@ -131,17 +157,36 @@ MAIN_FOLDER_ID = '1s2sviktIm0mxMLSA2AQJtz_KSFjYhSFe'
 UPDATE_FOLDER_ID = '1BFgEAjTIWglRL8HIStkXxkRgl8MFAVAj'
 VERSION_FILE = ".version"
 
-$latest_update = Session.file_by_id(MAIN_FOLDER_ID).files.find{|f| f.title.downcase.include? 'modernfantasy'}
+Session.file_by_id(MAIN_FOLDER_ID).files.each do |f|
+  $latest_update = f if f.title.downcase.include? 'modernfantasy'
+  $latest_header = f if f.title.downcase.include? '.version'
+end
+
+if !$latest_header
+  puts "ERROR: Header file missing"
+  exit
+end
+
+$latest_header.download_to_file('.__latestversion')
+File.open('.__latestversion', 'rb'){|fp| $latest_header = Marshal.load(fp)}
+File.delete '.__latestversion'
+
 class << $latest_update
-  attr_reader :version
+  attr_reader :version, :size
   def initialize
     return unless title =~ /v(\d+)\.(\d+)\.(\d+)/i
     @version = "#{$1}.#{$2}.#{$3}"
+    @size = $latest_header[:size]
   end
 end
 $latest_update.initialize
 
 $cur_version = (Marshal.load(File.open(VERSION_FILE, 'rb')) rescue nil)
+if $cur_version.nil? 
+  $cur_version = {
+    :version => '0.0.0'
+  }
+end
 puts "Latest version:  #{$latest_update.version}"
 puts "Current version: #{$cur_version[:version]}"
 
@@ -149,8 +194,53 @@ filename = $latest_update.title
 
 if $cur_version[:version] >= $latest_update.version 
   puts "\nYour modpack is up to update, nice!"
+  exit
 end
 
-if check_yesno("Verify file integrity? (y/n): ")
-else
+upgrade_tree = {}
+
+Session.file_by_id(UPDATE_FOLDER_ID).files.each do |file|
+  begin
+    _old, _new = file.title.split('~>').collect{|v| v.strip}
+    puts "An update is detected: #{_old} ~> #{_new}" if _old >= $cur_version[:version]
+    upgrade_tree[_old] = [_new, file]
+  rescue Exception => err
+  end
+end
+
+REMOVE_FOLDERS = [
+  'config/',
+  'mods/',
+  'scripts/',
+  'Flan/',
+  'resourcespacks/',
+  'shaderpacks/'
+]
+
+if !upgrade_tree[$cur_version[:version]]
+  puts "No update available, a complete-update required."
+  
+  if check_yesno "Do you want to auto-download and update the latest version (#{$latest_update.version})(#{Filesize.from("#{$latest_update.size} B").to_s("MB")})? (y/n): "
+    puts "Following folders will be removed:"
+    puts REMOVE_FOLDERS.join("\n")
+    puts "And options (e.g. keybinds) will also be replaced!"
+    if check_yesno "Continue? (y/n): "
+      _filename = $latest_update.title
+      print_downloading_info(_filename, $latest_update.size)
+      $latest_update.download_to_file(_filename)
+      finalize_downloading(_filename)
+      extract_zip(_filename)
+      puts "Complete!"
+      if check_yesno "Remove downloaded zip file? (y/n)"
+        File.delete _filename
+      else
+      end
+    else
+      puts "Aborting updater"
+      exit
+    end
+  else
+    puts "Aborting updater"
+    exit
+  end
 end
