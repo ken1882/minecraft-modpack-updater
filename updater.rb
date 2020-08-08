@@ -21,17 +21,17 @@ begin
   end
 rescue Exception => err
   $errno1 = err
-end
-
-begin
-  File.open("mf_modpack_updater.rblib", 'wb'){|fp| Marshal.load(fp)}
-rescue Exception => err 
-  $errno2 = err
+  begin
+    File.open("mf_modpack_updater.rblib", 'rb'){|fp| Marshal.load(fp)}
+  rescue Exception => err 
+    $errno2 = err
+  end
 end
 
 if $errno1 && $errno2 
   puts "Failed to load library:"
   report_exception $errno1
+  puts '-' * 42
   report_exception $errno2
   exit
 end
