@@ -1,4 +1,9 @@
 $:.unshift File.dirname($0)
+def ms_windows?
+  (/cygwin|mswin|mingw|bccwin|wince|emx/ =~ RUBY_PLATFORM) != nil
+end
+
+begin
 
 require 'iseq'
 require 'io/console'
@@ -313,4 +318,10 @@ else
   end
   load_current_version
   puts "Successfully updated to #{$cur_version[:version]}"
+end
+exit
+
+ensure
+  puts ''
+  system('pause') if ms_windows?
 end
