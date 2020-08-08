@@ -5,6 +5,23 @@ require 'io/console'
 require 'filesize'
 require 'zip'
 
+# Disable warning
+module Warning
+  def self.warn(*args)
+  end
+end
+
+def report_exception(error, ex_caller=[])
+  backtrace = [] + error.backtrace + ex_caller
+  error_line = backtrace.first
+  backtrace[0] = ''
+  err_class = " (#{error.class})"
+  back_trace_txt = backtrace.join("\n\tfrom ")
+  error_txt = sprintf("%s %s %s %s %s %s",error_line, ": ", error.message, err_class, back_trace_txt, "\n" )
+  print error_txt
+  return error_txt
+end
+
 begin
   # Load API library
   class RubyVM::InstructionSequence
@@ -34,23 +51,6 @@ if $errno1 && $errno2
   puts '-' * 42
   report_exception $errno2
   exit
-end
-
-# Disable warning
-module Warning
-  def self.warn(*args)
-  end
-end
-
-def report_exception(error, ex_caller=[])
-  backtrace = [] + error.backtrace + ex_caller
-  error_line = backtrace.first
-  backtrace[0] = ''
-  err_class = " (#{error.class})"
-  back_trace_txt = backtrace.join("\n\tfrom ")
-  error_txt = sprintf("%s %s %s %s %s %s",error_line, ": ", error.message, err_class, back_trace_txt, "\n" )
-  print error_txt
-  return error_txt
 end
 
 PROGRESS_BAR_LEN = 40
