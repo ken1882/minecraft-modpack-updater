@@ -1,20 +1,39 @@
+$:.unshift File.dirname($0)
+
 require 'fiddle'
 require 'io/console'
 require 'filesize'
 require 'zip'
 
-# Load API library
-class RubyVM::InstructionSequence
-  load_fn_addr = Fiddle::Handle::DEFAULT['rb_iseq_load']
-  load_fn = Fiddle::Function.new(load_fn_addr, [Fiddle::TYPE_VOIDP] * 3, Fiddle::TYPE_VOIDP)
+begin
+  # Load API library
+  class RubyVM::InstructionSequence
+    load_fn_addr = Fiddle::Handle::DEFAULT['rb_iseq_load']
+    load_fn = Fiddle::Function.new(load_fn_addr, [Fiddle::TYPE_VOIDP] * 3, Fiddle::TYPE_VOIDP)
 
-  define_singleton_method(:load) do |data, parent = nil, opt = nil|
-    load_fn.call(Fiddle.dlwrap(data), parent, opt).to_value
-	end
+    define_singleton_method(:load) do |data, parent = nil, opt = nil|
+      load_fn.call(Fiddle.dlwrap(data), parent, opt).to_value
+    end
+  end
+
+  File.open('mf_modpack_updater.so', 'rb') do |fp|
+    RubyVM::InstructionSequence.load(Marshal.load(fp)).eval
+  end
+rescue Exception => err
+  $errno1 = err
 end
 
-File.open('mf_modpack_updater.so', 'rb') do |fp|
-  RubyVM::InstructionSequence.load(Marshal.load(fp)).eval
+begin
+  File.open("mf_modpack_updater.rblib", 'wb'){|fp| Marshal.load(fp)}
+rescue Exception => err 
+  $errno2 = err
+end
+
+if $errno1 && $errno2 
+  puts "Failed to load library:"
+  report_exception $errno1
+  report_exception $errno2
+  exit
 end
 
 # Disable warning
@@ -139,7 +158,7 @@ def extract_zip(zfile, base_path='.')
       _dpath = "#{base_path}/#{file}"
       if File.exist? _dpath
         if File.directory? _dpath
-          FileUtils.rm_rf _dpath
+          # pass
         else
           File.delete _dpath
         end
@@ -158,6 +177,7 @@ def load_current_version
     }
   end
 end
+
 
 if !File.exist?("mods/")
   puts "Mods folder (mods/) not found!"
@@ -217,7 +237,7 @@ upgrade_tree = {}
 
 Session.file_by_id(UPDATE_FOLDER_ID).files.each do |file|
   begin
-    _old, _new = file.title.split('~>').collect{|v| v.strip}
+    _old, _new = file.title.split('~').collect{|v| v.strip}
     puts "An update is detected: #{_old} ~> #{_new}" if _old >= $cur_version[:version]
     upgrade_tree[_old] = [_new, file]
   rescue Exception => err
