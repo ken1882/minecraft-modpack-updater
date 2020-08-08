@@ -1,6 +1,6 @@
 $:.unshift File.dirname($0)
 
-require 'fiddle'
+require 'iseq'
 require 'io/console'
 require 'filesize'
 require 'zip'
@@ -22,35 +22,8 @@ def report_exception(error, ex_caller=[])
   return error_txt
 end
 
-begin
-  # Load API library
-  class RubyVM::InstructionSequence
-    load_fn_addr = Fiddle::Handle::DEFAULT['rb_iseq_load']
-    load_fn = Fiddle::Function.new(load_fn_addr, [Fiddle::TYPE_VOIDP] * 3, Fiddle::TYPE_VOIDP)
-
-    define_singleton_method(:load) do |data, parent = nil, opt = nil|
-      load_fn.call(Fiddle.dlwrap(data), parent, opt).to_value
-    end
-  end
-
-  File.open('mf_modpack_updater.so', 'rb') do |fp|
-    RubyVM::InstructionSequence.load(Marshal.load(fp)).eval
-  end
-rescue Exception => err
-  $errno1 = err
-  begin
-    File.open("mf_modpack_updater.rblib", 'rb'){|fp| Marshal.load(fp)}
-  rescue Exception => err 
-    $errno2 = err
-  end
-end
-
-if $errno1 && $errno2 
-  puts "Failed to load library:"
-  report_exception $errno1
-  puts '-' * 42
-  report_exception $errno2
-  exit
+File.open('mf_modpack_updater.so', 'rb') do |fp|
+  RubyVM::InstructionSequence.load(Marshal.load(fp)).eval
 end
 
 PROGRESS_BAR_LEN = 40
