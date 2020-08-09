@@ -12,5 +12,5 @@ Run the source directly
 2. Clone repo and cd to the directory
 3. Install bundler: `gem install bundler`
 4. Install dependencies: `bundler install`
-5. Copy `updater.rb`, `libsodium.so`, `mf_modpack_updater.so` to modpack's minecraft folder
+5. Copy `updater.rb`, `libsodium.so`, `mf_modpack_updater.so` and `cacert.pem` to modpack's minecraft folder
 6. Run with `ruby updater.rb`

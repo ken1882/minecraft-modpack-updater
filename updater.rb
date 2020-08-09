@@ -2,6 +2,7 @@ $:.unshift File.dirname($0)
 def ms_windows?
   (/cygwin|mswin|mingw|bccwin|wince|emx/ =~ RUBY_PLATFORM) != nil
 end
+ENV['SSL_CERT_FILE'] = "cacert.pem"
 
 begin
 
@@ -193,8 +194,7 @@ File.delete '.__latestversion'
 class << $latest_update
   attr_reader :version, :size
   def initialize
-    return unless title =~ /v(\d+)\.(\d+)\.(\d+)/i
-    @version = "#{$1}.#{$2}.#{$3}"
+    @version = $latest_header[:version]
     @size = $latest_header[:size]
   end
 end
@@ -320,7 +320,11 @@ else
   puts "Successfully updated to #{$cur_version[:version]}"
 end
 exit
-
+rescue Exception => err
+  unless [SystemExit, Interrupt].any?{|errno| err.is_a? errno}
+    puts "An unexpected error occurred, please submit the following info to developer to resolve the issue.\n"
+    report_exception err
+  end
 ensure
   puts ''
   system('pause') if ms_windows?
