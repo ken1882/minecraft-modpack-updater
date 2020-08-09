@@ -4,7 +4,7 @@ Using GoogleDrive APIs as remote to check updates
 
 ## Installation
 ### Windows
-Download in [release page](https://github.com/ken1882/minecraft-modpack-updater/releases/download/1.0.0/release.zip) and extract to modpack's minecraft folder
+Download in [release page](https://github.com/ken1882/minecraft-modpack-updater/releases) and extract to modpack's minecraft folder
 
 ### Linux / Mac
 Run the source directly
