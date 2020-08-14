@@ -207,8 +207,7 @@ puts "Current version: #{$cur_version[:version]}"
 filename = $latest_update.title
 
 if $cur_version[:version] >= $latest_update.version 
-  puts "\nYour modpack is up to update, nice!"
-  exit
+  puts "\nMajor release version is up to date, checking patches"
 end
 
 upgrade_tree = {}
@@ -220,6 +219,11 @@ Session.file_by_id(UPDATE_FOLDER_ID).files.each do |file|
     upgrade_tree[_old] = [_new, file]
   rescue Exception => err
   end
+end
+
+if upgrade_tree.keys.all?{|vn| vn <= $cur_version[:version]}
+  puts "\nYour modpack is up to date, nice!"
+  exit
 end
 
 REMOVE_FOLDERS = [
