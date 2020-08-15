@@ -199,29 +199,24 @@ class << $latest_update
   end
 end
 $latest_update.initialize
-
-load_current_version
-puts "Latest version:  #{$latest_update.version}"
-puts "Current version: #{$cur_version[:version]}"
-
-filename = $latest_update.title
-
-if $cur_version[:version] >= $latest_update.version 
-  puts "\nMajor release version is up to date, checking patches"
-end
-
 upgrade_tree = {}
 
 Session.file_by_id(UPDATE_FOLDER_ID).files.each do |file|
   begin
     _old, _new = file.title.split('~').collect{|v| v.strip}
-    puts "An update is detected: #{_old} ~> #{_new}" if _old >= $cur_version[:version]
     upgrade_tree[_old] = [_new, file]
   rescue Exception => err
   end
 end
+$latest_version = upgrade_tree.values.collect{|v| v[0]}.max
 
-if upgrade_tree.keys.all?{|vn| vn <= $cur_version[:version]}
+load_current_version
+puts "Latest version:  #{$latest_version}"
+puts "Current version: #{$cur_version[:version]}"
+
+filename = $latest_update.title
+
+if upgrade_tree.values.collect{|v| v[0]}.all?{|vn| vn <= $cur_version[:version]}
   puts "\nYour modpack is up to date, nice!"
   exit
 end
@@ -244,8 +239,8 @@ loop do
   _curv = upgrade_tree[_curv].first
 end
 
-if (_curv || '') != $latest_update.version
-  puts "No update available, a complete-update required."
+if (_curv || '') != $latest_version
+  puts "No upgrade patch available, a complete-redownload required."
   
   if check_yesno "Do you want to auto-download and update the latest version (#{$latest_update.version})(#{humanize_size($latest_update.size)})? (y/n): "
     puts "Following folders will be removed:"
