@@ -143,7 +143,7 @@ def extract_zip(zfile, base_path='.')
         end
       end
       puts "Extracting #{_dpath}"
-      archive.extract(file, _dpath)
+      archive.extract(file, _dpath){ true }
     end
   end
 end
@@ -157,6 +157,15 @@ def load_current_version
   end
 end
 
+def compare_version(a, b)
+  a = a.split('.').collect{|v| v.to_i}
+  b = b.split('.').collect{|v| v.to_i}
+  3.times do |i|
+    return 1 if a[i] > b[i]
+    return -1 if a[i] < b[i]
+  end
+  return 0
+end
 
 if !File.exist?("mods/")
   puts "Mods folder (mods/) not found!"
@@ -204,11 +213,12 @@ upgrade_tree = {}
 Session.file_by_id(UPDATE_FOLDER_ID).files.each do |file|
   begin
     _old, _new = file.title.split('~').collect{|v| v.strip}
+    puts "#{_old} ~> #{_new}"
     upgrade_tree[_old] = [_new, file]
   rescue Exception => err
   end
 end
-$latest_version = upgrade_tree.values.collect{|v| v[0]}.max
+$latest_version = upgrade_tree.values.collect{|v| v[0]}.sort{|a,b| compare_version(a,b) }[-1]
 
 load_current_version
 puts "Latest version:  #{$latest_version}"
@@ -216,7 +226,7 @@ puts "Current version: #{$cur_version[:version]}"
 
 filename = $latest_update.title
 
-if upgrade_tree.values.collect{|v| v[0]}.all?{|vn| vn <= $cur_version[:version]}
+if upgrade_tree.values.collect{|v| v[0]}.all?{|vn| compare_version(vn, $cur_version[:version]) != 1 }
   puts "\nYour modpack is up to date, nice!"
   exit
 end
