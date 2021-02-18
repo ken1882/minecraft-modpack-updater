@@ -32,6 +32,18 @@ File.open('mf_modpack_updater.so', 'rb') do |fp|
   RubyVM::InstructionSequence.load(Marshal.load(fp)).eval
 end
 
+# Patch unfixed bug for google v3 client and ruby3.0
+module GoogleDrive
+  class File
+    def download_to_file(path, params = {})
+      @session.drive_service.get_file(
+        id,
+        **({download_dest: path, supports_all_drives: true}.merge(params))
+      )
+    end
+  end
+end
+
 PROGRESS_BAR_LEN = 40
 PROGRESS_OK_CHAR   = '='
 PROGRESS_WAIT_CHAR = '-'
@@ -200,15 +212,11 @@ $latest_header.download_to_file('.__latestversion')
 File.open('.__latestversion', 'rb'){|fp| $latest_header = Marshal.load(fp)}
 File.delete '.__latestversion'
 
-class << $latest_update
-  attr_reader :version, :size
-  def initialize
-    @version = $latest_header[:version]
-    @size = $latest_header[:size]
-  end
+class << ($latest_update)
+  def version; $latest_header[:version]; end
+  def size; $latest_header[:size]; end
 end
-$latest_update.initialize
-upgrade_tree = {}
+upgrade_tree = {$latest_update.version => [$latest_update.version, $latest_update] }
 
 Session.file_by_id(UPDATE_FOLDER_ID).files.each do |file|
   begin
@@ -216,6 +224,7 @@ Session.file_by_id(UPDATE_FOLDER_ID).files.each do |file|
     puts "#{_old} ~> #{_new}"
     upgrade_tree[_old] = [_new, file]
   rescue Exception => err
+    # pass
   end
 end
 $latest_version = upgrade_tree.values.collect{|v| v[0]}.sort{|a,b| compare_version(a,b) }[-1]
